@@ -35,7 +35,7 @@ HOMEWORK_STATUSES = {
 
 
 def send_message(bot, message):
-    """Отправляем сообщение в telegram пользователю"""
+    """Отправляем сообщение в telegram пользователю."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.info('Сообщение успешно отправлено')
@@ -44,7 +44,7 @@ def send_message(bot, message):
 
 
 def get_api_answer(current_timestamp):
-    """Получаем ответ API-сервиса и преобразуем JSON к типам данных Python"""
+    """Получаем ответ API-сервиса и преобразуем JSON к типам данных Python."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
     response = requests.get(ENDPOINT, headers=HEADERS, params=params)
@@ -62,7 +62,7 @@ def get_api_answer(current_timestamp):
 
 
 def check_response(response):
-    """Проверка соответствия ответа сервера ожиданиям"""
+    """Проверка соответствия ответа сервера ожиданиям."""
     if isinstance(response, dict):
         homeworks = response.get('homeworks')
     elif isinstance(response, list):
@@ -81,7 +81,7 @@ def check_response(response):
 
 
 def parse_status(homework):
-    """Получаем статус домашней работы"""
+    """Получаем статус домашней работы."""
     homework_status = homework.get('status')
     if homework_status is None:
         raise KeyError('Не удалось получить статус работы!')
@@ -98,7 +98,7 @@ def parse_status(homework):
 
 
 def check_tokens():
-    """Проверка наличия переменных окружения"""
+    """Проверка наличия переменных окружения."""
     token_dict = {'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
                   'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
                   'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID}
