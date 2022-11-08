@@ -52,7 +52,7 @@ def get_api_answer(current_timestamp):
             error_text.format(
                 ENDPOINT,
                 error
-            )+f'параметры запроса: {ENDPOINT}, {HEADERS}, {params}'
+            ) + f'параметры запроса: {ENDPOINT}, {HEADERS}, {params}'
         )
     except Exception:
         raise Exception(error_text.format(ENDPOINT, response.status_code))
