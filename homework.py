@@ -5,6 +5,7 @@ import sys
 import time
 
 from dotenv import load_dotenv
+from http import HTTPStatus
 from telegram import Bot, TelegramError
 
 
@@ -44,7 +45,7 @@ def get_api_answer(current_timestamp):
                   'недоступен. Код ответа API: {}.')
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-        if response.status_code != 200:
+        if response.status_code != HTTPStatus.OK:
             raise Exception
     except requests.exceptions.ConnectionError as error:
         raise Exception(
