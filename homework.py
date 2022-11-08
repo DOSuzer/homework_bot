@@ -8,14 +8,6 @@ from dotenv import load_dotenv
 from telegram import Bot, TelegramError
 
 
-formatter = '%(asctime)s, %(levelname)s, %(message)s'
-stream_handler = logging.StreamHandler(sys.stdout)
-stream_handler.setLevel(logging.INFO)
-stream_handler.setFormatter(logging.Formatter(formatter))
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logger.addHandler(stream_handler)
-
 load_dotenv()
 
 PRACTICUM_TOKEN = os.getenv('PR_TOKEN')
@@ -37,8 +29,9 @@ HOMEWORK_STATUSES = {
 def send_message(bot, message):
     """Отправляем сообщение в telegram пользователю."""
     try:
+        logger.info(f'Отправляем сообщение в телеграм: {message}')
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logger.info('Сообщение успешно отправлено')
+        logger.info(f'Сообщение успешно отправлено: {message}')
     except TelegramError as error:
         logger.error('Сообщение не отпралено: {}'.format(error))
 
@@ -47,15 +40,21 @@ def get_api_answer(current_timestamp):
     """Получаем ответ API-сервиса и преобразуем JSON к типам данных Python."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
-    response = requests.get(ENDPOINT, headers=HEADERS, params=params)
     error_text = ('Сбой в работе программы: Эндпоинт {} '
-                  'недоступен. Код ответа API: {}')
-    if response.status_code == 408:
-        raise Exception(error_text.format(ENDPOINT, 408))
-    elif response.status_code == 404:
-        raise Exception(error_text.format(ENDPOINT, 404))
-    elif response.status_code == 500:
-        raise Exception(error_text.format(ENDPOINT, 500))
+                  'недоступен. Код ответа API: {}.')
+    try:
+        response = requests.get(ENDPOINT, headers=HEADERS, params=params)
+        if response.status_code != 200:
+            raise Exception
+    except requests.exceptions.ConnectionError as error:
+        raise Exception(
+            error_text.format(
+                ENDPOINT,
+                error
+            )+f'параметры запроса: {ENDPOINT}, {HEADERS}, {params}'
+        )
+    except Exception:
+        raise Exception(error_text.format(ENDPOINT, response.status_code))
     else:
         response = response.json()
         return response
@@ -63,21 +62,21 @@ def get_api_answer(current_timestamp):
 
 def check_response(response):
     """Проверка соответствия ответа сервера ожиданиям."""
-    if isinstance(response, dict):
-        homeworks = response.get('homeworks')
-    elif isinstance(response, list):
-        homeworks = response[0].get('homeworks')
-    else:
-        raise Exception('Ответ API некорректен, неверный тип данных!')
-    if homeworks is not None:
-        if isinstance(homeworks, list):
-            return homeworks
-        else:
-            raise Exception('Ответ API некорректен, по ключю "homeworks" '
-                            'получен не список!')
-    else:
+#    pytest против логгера в этой функции,
+#    но он будет добавлен в финальном релизе
+#    logger.info('Начата проверка ответа сервера')
+    if not isinstance(response, dict):
+        raise TypeError('Ответ API некорректен, неверный тип данных!')
+#    logger.info('Получен словарь с данными')
+    homeworks = response.get('homeworks')
+    if homeworks is None:
         raise Exception('Ответ API некорректен, '
                         'отсутствует ключ "homeworks"!')
+    if not isinstance(homeworks, list):
+        raise KeyError('Ответ API некорректен, по ключю "homeworks" '
+                       'получен не список!')
+#    logger.info('Получен список работ')
+    return homeworks
 
 
 def parse_status(homework):
@@ -89,59 +88,59 @@ def parse_status(homework):
     if homework_name is None:
         raise KeyError('Не удалось получить название работы!')
     if homework_status not in HOMEWORK_STATUSES.keys():
-        raise Exception(
+        raise ValueError(
             ('Неизвестный статус проверки homework: {}!'
              ).format(homework_status)
         )
-    verdict = HOMEWORK_STATUSES.get(homework_status)
-    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+    return (
+        f'Изменился статус проверки работы "{homework_name}".'
+        f' {HOMEWORK_STATUSES.get(homework_status)}'
+    )
 
 
 def check_tokens():
     """Проверка наличия переменных окружения."""
-    token_dict = {'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
-                  'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
-                  'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID}
-    result = True
-    for key, value in token_dict.items():
-        if value is None:
-            result = False
-            logger.critical('Отсутствует токен "{}"'.format(key))
-    return result
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
-        raise Exception('Отсутствуют переменные окружения!')
+        logger.critical('Отсутствуют переменные окружения!')
+        sys.exit('Отсутствуют переменные окружения!')
     bot = Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = int(time.time())
     old_status = 'Статус не обновлялся'
     no_changes = 'Статус не обновлялся'
     sent_message = ''
     while True:
         try:
+            current_timestamp = int(time.time())
             response = get_api_answer(current_timestamp)
             homework_list = check_response(response)
-            if len(homework_list) == 0:
+            if not homework_list:
                 status = 'Статус не обновлялся'
                 logger.debug('Отсутствие в ответе новых статусов')
             else:
                 status = parse_status(homework_list[0])
+                if status != no_changes and old_status != status:
+                    send_message(bot, status)
+                    old_status = status
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
             if message != sent_message:
                 send_message(bot, message)
                 sent_message = message
-        else:
-            if status != no_changes and old_status != status:
-                send_message(bot, status)
-                old_status = status
-                current_timestamp = int(time.time())
         finally:
             time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
+    formatter = '%(asctime)s, %(levelname)s, %(message)s'
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(logging.INFO)
+    stream_handler.setFormatter(logging.Formatter(formatter))
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logger.addHandler(stream_handler)
     main()
